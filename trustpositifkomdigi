@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# ============================================================
+# DNSDIST KOMDIGI BLOCKLIST
+# Download -> Clean -> Whitelist -> CDB
+# ============================================================
+
+# ---------------- CONFIG ----------------
+
+DNSDIST_USER="_dnsdist"
+DNSDIST_GROUP="_dnsdist"
+
+CDB_DIR="/etc/dnsdist"
+CDB_FILE="${CDB_DIR}/komdigi.cdb"
+
+BLOCKLIST_URL="https://raw.githubusercontent.com/alsyundawy/TrustPositif/main/trusts_v2.txt"
+WHITELIST_URL="https://raw.githubusercontent.com/jorelart/dnsdist/refs/heads/main/whitelist"
+
+LOCK_FILE="/run/lock/dnsdist-komdigi.lock"
+
+# Minimal domain yang dianggap valid.
+# Jika hasil download di bawah angka ini, CDB lama tidak diganti.
+MIN_DOMAINS=1000
+
+# Timeout download
+CONNECT_TIMEOUT=20
+MAX_TIME=300
+
+# ----------------------------------------
+
+
+log()
+{
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+
+error_exit()
+{
+    log "ERROR: $*"
+    exit 1
+}
+
+
+cleanup()
+{
+    [[ -n "${TMP_DIR:-}" ]] && rm -rf "${TMP_DIR}"
+}
+
+
+trap cleanup EXIT
+
+
+# ============================================================
+# CHECK ROOT
+# ============================================================
+
+if [[ $EUID -ne 0 ]]; then
+    error_exit "Script harus dijalankan sebagai root."
+fi
+
+
+# ============================================================
+# LOCK
+# ============================================================
+
+exec 9>"${LOCK_FILE}"
+
+if ! flock -n 9; then
+    log "Update sebelumnya masih berjalan. Keluar."
+    exit 0
+fi
+
+
+# ============================================================
+# DEPENDENCY
+# ============================================================
+
+for CMD in curl dos2unix cdb sort grep awk sed wc mktemp flock; do
+    if ! command -v "$CMD" >/dev/null 2>&1; then
+        error_exit "Command tidak ditemukan: $CMD"
+    fi
+done
+
+
+# ============================================================
+# PREPARE
+# ============================================================
+
+mkdir -p "$CDB_DIR"
+
+TMP_DIR="$(mktemp -d)"
+
+RAW_FILE="${TMP_DIR}/raw.txt"
+CLEAN_FILE="${TMP_DIR}/clean.txt"
+FINAL_TMP="${CDB_DIR}/.komdigi.cdb.tmp"
+
+
+rm -f "$FINAL_TMP"
+
+
+log "=========================================="
+log "Update dnsdist Komdigi blocklist"
+log "=========================================="
+
+
+# ============================================================
+# DOWNLOAD BLOCKLIST
+# ============================================================
+
+log "Download blocklist..."
+
+curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --connect-timeout "$CONNECT_TIMEOUT" \
+    --max-time "$MAX_TIME" \
+    --retry 3 \
+    --retry-delay 5 \
+    --output "$RAW_FILE" \
+    "$BLOCKLIST_URL"
+
+
+# Pastikan file tidak kosong
+
+if [[ ! -s "$RAW_FILE" ]]; then
+    error_exit "Blocklist kosong."
+fi
+
+
+# ============================================================
+# NORMALIZE + CLEAN
+# ============================================================
+
+log "Membersihkan blocklist..."
+
+dos2unix -q "$RAW_FILE"
+
+
+sed \
+    -e 's/\r//g' \
+    -e 's/^[[:space:]]*//' \
+    -e 's/[[:space:]]*$//' \
+    -e 's/^\.*//' \
+    -e 's/\.*$//' \
+    "$RAW_FILE" \
+|
+tr '[:upper:]' '[:lower:]'
+|
+grep -E '^[a-z0-9]([a-z0-9._-]*[a-z0-9])?\.[a-z]{2,}$'
+|
+grep -v -E \
+    '(^|\.)\.\.|\.\.|^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
+|
+awk 'length($0) <= 253'
+|
+sort -u \
+> "$CLEAN_FILE"
+
+
+DOMAIN_COUNT="$(wc -l < "$CLEAN_FILE")"
+
+
+log "Domain setelah cleaning: ${DOMAIN_COUNT}"
+
+
+# ============================================================
+# VALIDATE RESULT
+# ============================================================
+
+if (( DOMAIN_COUNT < MIN_DOMAINS )); then
+    error_exit \
+        "Jumlah domain terlalu sedikit (${DOMAIN_COUNT}). " \
+        "CDB lama tidak akan diganti."
+fi
+
+
+# ============================================================
+# DOWNLOAD WHITELIST
+# ============================================================
+
+log "Download whitelist..."
+
+WHITELIST_FILE="${TMP_DIR}/whitelist.txt"
+
+curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --connect-timeout "$CONNECT_TIMEOUT" \
+    --max-time "$MAX_TIME" \
+    --retry 3 \
+    --retry-delay 5 \
+    --output "$WHITELIST_FILE" \
+    "$WHITELIST_URL"
+
+
+# Normalisasi whitelist
+
+dos2unix -q "$WHITELIST_FILE"
+
+sed \
+    -e 's/\r//g' \
+    -e 's/^[[:space:]]*//' \
+    -e 's/[[:space:]]*$//' \
+    -e 's/^\.*//' \
+    -e 's/\.*$//' \
+    "$WHITELIST_FILE" |
+tr '[:upper:]' '[:lower:]' |
+grep -E '^[a-z0-9]([a-z0-9._-]*[a-z0-9])?\.[a-z]{2,}$' |
+sort -u \
+> "${TMP_DIR}/whitelist.clean"
+
+
+# ============================================================
+# APPLY WHITELIST
+# ============================================================
+
+log "Menerapkan whitelist..."
+
+grep \
+    -F \
+    -x \
+    -v \
+    -f "${TMP_DIR}/whitelist.clean" \
+    "$CLEAN_FILE" \
+> "${TMP_DIR}/blocklist.final" || true
+
+
+mv \
+    "${TMP_DIR}/blocklist.final" \
+    "$CLEAN_FILE"
+
+
+DOMAIN_COUNT="$(wc -l < "$CLEAN_FILE")"
+
+
+log "Domain final: ${DOMAIN_COUNT}"
+
+
+if (( DOMAIN_COUNT < MIN_DOMAINS )); then
+    error_exit \
+        "Jumlah domain setelah whitelist terlalu sedikit (${DOMAIN_COUNT}). " \
+        "CDB lama dipertahankan."
+fi
+
+
+# ============================================================
+# CREATE CDB
+# ============================================================
+
+log "Membuat CDB..."
+
+awk '
+{
+    printf "+%d,0:%s->\n", length($0), $0
+}
+END {
+    print ""
+}
+' "$CLEAN_FILE" |
+cdb -c "$FINAL_TMP"
+
+
+if [[ ! -s "$FINAL_TMP" ]]; then
+    error_exit "CDB gagal dibuat atau kosong."
+fi
+
+
+# ============================================================
+# INSTALL CDB
+# ============================================================
+
+log "Memasang CDB baru..."
+
+chown "${DNSDIST_USER}:${DNSDIST_GROUP}" "$FINAL_TMP"
+
+chmod 0644 "$FINAL_TMP"
+
+
+# Atomic replacement
+
+mv -f "$FINAL_TMP" "$CDB_FILE"
+
+
+# ============================================================
+# RESULT
+# ============================================================
+
+CDB_SIZE="$(du -h "$CDB_FILE" | awk '{print $1}')"
+
+log "=========================================="
+log "Update berhasil"
+log "CDB     : $CDB_FILE"
+log "Domain  : $DOMAIN_COUNT"
+log "Size    : $CDB_SIZE"
+log "=========================================="
