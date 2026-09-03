@@ -1,1 +1,320 @@
-test
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+WORKDIR="/tmp/dns-blocklist"
+DB_DOM="$WORKDIR/db.dom"
+BLOCK_LIST="$WORKDIR/block.list"
+WHITELIST="$WORKDIR/whitelist"
+
+CDB_FILE="/etc/dnsdist/domains.cdb"
+
+WHITELIST_URL="https://raw.githubusercontent.com/jorelart/dnsdist/refs/heads/main/whitelist"
+
+LOG_FILE="/var/log/dnsdist-blocklist.log"
+
+mkdir -p "$WORKDIR"
+touch "$LOG_FILE"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+trap 'log "ERROR line $LINENO: $BASH_COMMAND"; exit 1' ERR
+
+if [[ $EUID -ne 0 ]]; then
+    echo "Script harus dijalankan sebagai root."
+    exit 1
+fi
+
+# ============================================================
+# Dependency
+# ============================================================
+
+for pkg in curl dos2unix tinycdb; do
+    case "$pkg" in
+        curl)
+            cmd="curl"
+            ;;
+        dos2unix)
+            cmd="dos2unix"
+            ;;
+        tinycdb)
+            cmd="cdb"
+            ;;
+    esac
+
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        log "Install $pkg..."
+        apt-get update
+        apt-get install -y "$pkg"
+    fi
+done
+
+# ============================================================
+# Clean previous files
+# ============================================================
+
+rm -f \
+    "$DB_DOM" \
+    "$BLOCK_LIST" \
+    "$WHITELIST"
+
+touch "$DB_DOM"
+
+log "Starting blocklist update"
+
+
+# ============================================================
+# Static/custom domain
+# ============================================================
+
+echo "localhost.jsn.net.id" >> "$DB_DOM"
+
+
+# ============================================================
+# ShadowWhisperer
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/ShadowWhisperer/BlockLists/refs/heads/master/Lists/Malware" \
+| grep -vE '^\s*(#|$)|[*\/]' \
+>> "$DB_DOM" || true
+
+
+# ============================================================
+# JSN custom blocklist
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/jorelart/dnsdist/refs/heads/main/baddomain" \
+>> "$DB_DOM"
+
+
+# ============================================================
+# CERT.pl
+# ============================================================
+
+curl -fsSL \
+"https://hole.cert.pl/domains/v2/domains_hosts.txt" \
+| awk '$1 ~ /^195/ {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# RPiList
+# ============================================================
+
+curl -fsSL \
+"https://v.firebog.net/hosts/RPiList-Malware.txt" \
+| sed -E 's/\|\|//g; s/\^//g' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# quidsup
+# ============================================================
+
+curl -fsSL \
+"https://gitlab.com/quidsup/notrack-blocklists/-/raw/master/malware.hosts?ref_type=heads" \
+| awk '$1 ~ /^127/ {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# DandelionSprout
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareHosts.txt" \
+| awk '$1 == "127.0.0.1" {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# CyberHost
+# ============================================================
+
+curl -fsSL \
+"https://lists.cyberhost.uk/malware.txt" \
+| grep -vE '^\s*(#|$)|[*\/]' \
+>> "$DB_DOM" || true
+
+
+# ============================================================
+# trcert-malware
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/cenk/trcert-malware/main/trcert-domains.txt" \
+| grep -vE '^\s*(#|$)|[*\/]' \
+>> "$DB_DOM" || true
+
+
+# ============================================================
+# ThreatFox
+# ============================================================
+
+curl -fsSL \
+"https://threatfox.abuse.ch/downloads/hostfile" \
+| awk '$1 == "127.0.0.1" {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# Maltrail
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/stamparm/aux/master/maltrail-malware-domains.txt" \
+>> "$DB_DOM"
+
+
+# ============================================================
+# noTrack
+# ============================================================
+
+curl -fsSL \
+"https://gitlab.com/quidsup/notrack-blocklists/raw/master/notrack-malware.txt" \
+| awk '!/^[#*\/]/ {print $1}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# URLhaus
+# ============================================================
+
+curl -fsSL \
+"https://urlhaus.abuse.ch/downloads/hostfile/" \
+| awk '$1 == "127.0.0.1" {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# KADhosts
+# ============================================================
+
+curl -fsSL \
+"https://raw.githubusercontent.com/FiltersHeroes/KADhosts/master/KADhosts.txt" \
+| awk '$1 == "0.0.0.0" {print $2}' \
+>> "$DB_DOM"
+
+
+# ============================================================
+# Phishing Army
+# ============================================================
+
+curl -fsSL \
+"https://phishing.army/download/phishing_army_blocklist_extended.txt" \
+| grep -vE '^\s*(#|$)|[*\/]' \
+>> "$DB_DOM" || true
+
+
+# ============================================================
+# Normalize
+# ============================================================
+
+log "Cleaning domain list..."
+
+dos2unix "$DB_DOM" >/dev/null 2>&1 || true
+
+sed \
+    -e '/^[[:space:]]*$/d' \
+    -e 's/\r$//' \
+    -e 's/[[:space:]]//g' \
+    -e 's/^\.//' \
+    -e 's/\.$//' \
+    -e '/\.\./d' \
+    -e '/\./!d' \
+    -e '/^-/d' \
+    -e '/^.\{246\}/d' \
+    -e '/[^a-zA-Z0-9._-]/d' \
+"$DB_DOM" \
+| grep -vE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+| tr '[:upper:]' '[:lower:]' \
+| sort -u \
+> "$BLOCK_LIST"
+
+
+# ============================================================
+# Whitelist
+# ============================================================
+
+log "Downloading whitelist..."
+
+curl -fsSL \
+"$WHITELIST_URL" \
+-o "$WHITELIST"
+
+dos2unix "$WHITELIST" >/dev/null 2>&1 || true
+
+sed -i \
+    -e '/^[[:space:]]*$/d' \
+    -e 's/\r$//' \
+    -e 's/[[:space:]]//g' \
+    -e 's/^\.//' \
+    -e 's/\.$//' \
+"$WHITELIST"
+
+sort -u "$WHITELIST" -o "$WHITELIST"
+
+
+# ============================================================
+# Remove whitelist
+# ============================================================
+
+log "Removing whitelist..."
+
+if [[ -s "$WHITELIST" ]]; then
+
+    grep -Fvx \
+        -f "$WHITELIST" \
+        "$BLOCK_LIST" \
+        > "$BLOCK_LIST.tmp"
+
+    mv "$BLOCK_LIST.tmp" "$BLOCK_LIST"
+
+fi
+
+
+# ============================================================
+# Statistics
+# ============================================================
+
+TOTAL=$(wc -l < "$BLOCK_LIST")
+
+log "Final domains: $TOTAL"
+
+
+# ============================================================
+# Build dnsdist CDB
+# ============================================================
+
+log "Building dnsdist CDB..."
+
+CDB_TMP="${CDB_FILE}.tmp"
+
+rm -f "$CDB_TMP"
+
+awk '
+{
+    printf "+%d,0:%s->\n", length($0), $0
+}
+END {
+    print ""
+}
+' "$BLOCK_LIST" \
+| cdb -c "$CDB_TMP"
+
+
+# ============================================================
+# Atomic replace
+# ============================================================
+
+mv -f "$CDB_TMP" "$CDB_FILE"
+
+chmod 0644 "$CDB_FILE"
+
+log "CDB updated: $CDB_FILE"
+
+log "Blocklist update completed"
