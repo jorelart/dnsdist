@@ -50,3 +50,6 @@
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/crypto/cryptojacking/Snota418/Crypto-streams.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/useless-websites/jarelllama/parked-domains.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/useless-websites/sefinek.hosts.txt
+
+    #Custom
+    https://raw.githubusercontent.com/jorelart/dnsdist/main/database/blocklist 
