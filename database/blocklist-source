@@ -1,3 +1,6 @@
+    #Custom
+    https://raw.githubusercontent.com/jorelart/dnsdist/main/database/blocklist 
+
     #MAIN
     https://raw.githubusercontent.com/alsyundawy/TrustPositif/refs/heads/main/tlds-valid-domains_v2.txt
     https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/doh-onlydomains.txt
@@ -51,5 +54,4 @@
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/useless-websites/jarelllama/parked-domains.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/useless-websites/sefinek.hosts.txt
 
-    #Custom
-    https://raw.githubusercontent.com/jorelart/dnsdist/main/database/blocklist 
+    
