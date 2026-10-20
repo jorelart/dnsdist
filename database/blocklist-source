@@ -39,10 +39,10 @@
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/firebog/AdguardDNS.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/firebog/Admiral.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/firebog/Easylist.fork.txt
-    https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/firebog/Prigent-Ads.fork.txt
+    #https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/firebog/Prigent-Ads.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/sefinek.hosts.txt
-    https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/ShadowWhisperer/Ads.fork.txt
-    https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/yoyo/ads-trackers-etc.fork.txt
+    #https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/ShadowWhisperer/Ads.fork.txt
+    #https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/ads/yoyo/ads-trackers-etc.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/tracking-and-telemetry/0Zinc/easyprivacy.fork.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/tracking-and-telemetry/frogeye/firstparty-trackers-hosts.txt
     https://raw.githubusercontent.com/sefinek24/Sefinek-Blocklist-Collection/main/blocklists/generated/0.0.0.0/tracking-and-telemetry/MajkiIT/adguard-mobile-host.fork.txt
